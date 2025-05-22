@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,17 +26,21 @@ import com.laennecai.poc.features.bmi.presentation.BmiCalculatorScreen
 import com.laennecai.poc.features.post.presentation.PostDetailScaffold
 import com.laennecai.poc.features.post.presentation.PostListScaffold
 import com.laennecai.poc.features.post.presentation.PostViewModel
+import com.laennecai.poc.features.todo.presentation.TodoListScaffold
+import com.laennecai.poc.features.todo.presentation.TodoViewModel
 import com.laennecai.poc.ui.theme.PocTheme
 
 // Main navigation routes for bottom bar
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     data object Posts : Screen("posts_root", "Posts", Icons.Filled.Email)
     data object BmiCalculator : Screen("bmi_calculator_root", "BMI Calc", Icons.Filled.Face)
+    data object TodoList : Screen("todo_list_root", "Todo", Icons.Filled.List)
 }
 
 val bottomNavItems = listOf(
     Screen.Posts,
-    Screen.BmiCalculator
+    Screen.BmiCalculator,
+    Screen.TodoList
 )
 
 // Nested graph routes
@@ -45,6 +50,7 @@ object NestedRoutes {
     fun postDetail(postId: Int) = "postDetail/$postId"
 
     const val BMI_CALCULATOR = "bmiCalculator"
+    const val TODO_LIST = "todoList"
 }
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -78,7 +84,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                ) { innerPadding ->
+                ) { _ ->
                     NavHost(
                         navController = navController,
                         startDestination = Screen.Posts.route,
@@ -100,7 +106,8 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val postId = backStackEntry.arguments?.getInt("postId")
                                 val postViewModel: PostViewModel = viewModel()
-                                val post = postViewModel.postsResult?.getOrNull()?.find { it.id == postId }
+                                val post =
+                                    postViewModel.postsResult?.getOrNull()?.find { it.id == postId }
                                 PostDetailScaffold(post = post, navController = navController)
                             }
                         }
@@ -110,6 +117,15 @@ class MainActivity : ComponentActivity() {
                         ) {
                             composable(NestedRoutes.BMI_CALCULATOR) {
                                 BmiCalculatorScaffold()
+                            }
+                        }
+                        navigation(
+                            startDestination = NestedRoutes.TODO_LIST,
+                            route = Screen.TodoList.route
+                        ) {
+                            composable(NestedRoutes.TODO_LIST) {
+                                val todoViewModel: TodoViewModel = viewModel()
+                                TodoListScaffold(viewModel = todoViewModel)
                             }
                         }
                     }
