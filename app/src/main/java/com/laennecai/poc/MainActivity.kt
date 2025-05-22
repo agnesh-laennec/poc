@@ -26,7 +26,6 @@ import com.laennecai.poc.features.post.presentation.PostDetailScaffold
 import com.laennecai.poc.features.post.presentation.PostListScaffold
 import com.laennecai.poc.features.post.presentation.PostViewModel
 import com.laennecai.poc.ui.theme.PocTheme
-import com.laennecai.poc.features.post.domain.Result
 
 // Main navigation routes for bottom bar
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
@@ -101,12 +100,10 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val postId = backStackEntry.arguments?.getInt("postId")
                                 val postViewModel: PostViewModel = viewModel()
-                                val post =
-                                    (postViewModel.postsResult as? Result.Success)?.data?.find { it.id == postId }
+                                val post = postViewModel.postsResult?.getOrNull()?.find { it.id == postId }
                                 PostDetailScaffold(post = post, navController = navController)
                             }
                         }
-
                         navigation(
                             startDestination = NestedRoutes.BMI_CALCULATOR,
                             route = Screen.BmiCalculator.route

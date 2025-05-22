@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.laennecai.poc.NestedRoutes // Adjusted import
 import com.laennecai.poc.features.post.data.model.Post
-import com.laennecai.poc.features.post.domain.Result
+// import com.laennecai.poc.features.post.domain.Result // Removed custom Result import
 // import androidx.compose.ui.text.style.TextOverflow // Reverted: Remove if not essential for simplified version
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,10 +31,10 @@ fun PostListScaffold(viewModel: PostViewModel, navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Posts") }, // Reverted: Removed FontWeight.Bold
+                title = { Text("Posts") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary, // Reverted: to primary
+                    titleContentColor = MaterialTheme.colorScheme.primary,
                 )
             )
         }
@@ -53,7 +53,7 @@ fun PostDetailScaffold(post: Post?, navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Post Detail") }, // Reverted: Removed FontWeight.Bold
+                title = { Text("Post Detail") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -61,7 +61,7 @@ fun PostDetailScaffold(post: Post?, navController: NavController) {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary, // Reverted: to primary
+                    titleContentColor = MaterialTheme.colorScheme.primary,
                 )
             )
         }
@@ -87,38 +87,37 @@ fun PostListScreen(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    when (val result = viewModel.postsResult) {
-        is Result.Loading -> {
-            Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator() // Reverted: Removed custom color
-            }
-        }
+    val result = viewModel.postsResult // Access the nullable kotlin.Result
 
-        is Result.Success -> {
-            LazyColumn(
-                modifier = modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp), // Reverted: to original padding
-                verticalArrangement = Arrangement.spacedBy(12.dp) // Reverted: to original spacing
-            ) {
-                items(result.data.size) { index ->
-                    PostItem(
-                        post = result.data[index],
-                        onClick = { navController.navigate(NestedRoutes.postDetail(result.data[index].id)) }
+    if (result == null) { // Loading state (or initial state)
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else {
+        result.fold(
+            onSuccess = { posts ->
+                LazyColumn(
+                    modifier = modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(posts.size) { index ->
+                        PostItem(
+                            post = posts[index],
+                            onClick = { navController.navigate(NestedRoutes.postDetail(posts[index].id)) }
+                        )
+                    }
+                }
+            },
+            onFailure = { exception ->
+                Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "Error: ${exception.message ?: "Unknown error"}", // Handle null message
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             }
-        }
-
-        is Result.Error -> {
-            Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "Error: ${result.exception.message}",
-                    color = MaterialTheme.colorScheme.error
-                    // Reverted: Removed custom style (MaterialTheme.typography.bodyLarge)
-                )
-            }
-        }
-        // Kept removed redundant cases as that was a correct change
+        )
     }
 }
 
@@ -128,25 +127,20 @@ fun PostItem(post: Post, modifier: Modifier = Modifier, onClick: () -> Unit) {
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), // Reverted: to 2.dp
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = MaterialTheme.shapes.medium
-        // Reverted: Removed custom colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = post.title,
-                style = MaterialTheme.typography.titleMedium, // Reverted
-                fontWeight = FontWeight.SemiBold, // Reverted
-                // Reverted: Removed custom color
-                modifier = Modifier.padding(bottom = 4.dp) // Reverted
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 4.dp)
             )
             Text(
                 text = post.body,
-                style = MaterialTheme.typography.bodyMedium, // Reverted
-                // Reverted: Removed custom color
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 3,
-                // Reverted: Removed overflow = TextOverflow.Ellipsis
-                // Reverted: padding for body text (original had no specific bottom padding here)
             )
         }
     }
@@ -161,16 +155,13 @@ fun PostDetailScreen(post: Post, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = post.title,
-            style = MaterialTheme.typography.headlineMedium, // Reverted
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold
-            // Reverted: Removed custom color
-            // Reverted: Modifier.padding(bottom = 8.dp) to original (none or default)
         )
-        Spacer(modifier = Modifier.height(12.dp)) // Reverted
+        Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = post.body,
             style = MaterialTheme.typography.bodyLarge
-            // Reverted: Removed custom color
         )
     }
 } 

@@ -9,11 +9,10 @@ import com.laennecai.poc.features.post.data.model.Post
 import com.laennecai.poc.features.post.data.remote.ApiClient
 import com.laennecai.poc.features.post.data.repository.PostRepositoryImpl
 import com.laennecai.poc.features.post.domain.usecase.GetPostsUseCase
-import com.laennecai.poc.features.post.domain.Result // Will be created next
 import kotlinx.coroutines.launch
 
 class PostViewModel : ViewModel() {
-    var postsResult by mutableStateOf<Result<List<Post>>>(Result.Loading)
+    var postsResult: Result<List<Post>>? by mutableStateOf(null)
         private set
 
     private val postRepository = PostRepositoryImpl(ApiClient.instance)
@@ -23,10 +22,14 @@ class PostViewModel : ViewModel() {
         fetchPosts()
     }
 
-    private fun fetchPosts() {
+    fun fetchPosts() {
         viewModelScope.launch {
-            postsResult = Result.Loading
-            postsResult = getPostsUseCase()
+            try {
+                val posts = getPostsUseCase()
+                postsResult = Result.success(posts)
+            } catch (e: Exception) {
+                postsResult = Result.failure(e)
+            }
         }
     }
 } 
