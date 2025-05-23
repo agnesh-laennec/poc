@@ -6,8 +6,8 @@ import java.math.RoundingMode
 data class BmiInput(val heightCm: Double, val weightKg: Double)
 data class BmiOutput(val bmi: Double, val category: String)
 
-class CalculateBmiUseCase {
-    operator fun invoke(input: BmiInput): BmiOutput? {
+open class CalculateBmiUseCase {
+    open operator fun invoke(input: BmiInput): BmiOutput? {
         if (input.heightCm <= 0 || input.weightKg <= 0) {
             return null
         }

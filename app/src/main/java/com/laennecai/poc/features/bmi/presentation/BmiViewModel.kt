@@ -13,7 +13,6 @@ class BmiViewModel(private val calculateBmiUseCase: CalculateBmiUseCase = Calcul
     var heightText by mutableStateOf("")
     var weightText by mutableStateOf("")
     var bmiResult by mutableStateOf<BmiOutput?>(null)
-        private set
     var showError by mutableStateOf(false)
         private set
 
