@@ -1,14 +1,14 @@
 steps:
   # Download keystore from Cloud Storage
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['cp', 'gs://${_BUCKET_NAME}/keystore.jks', 'app/keystore.jks']
+    args: ['cp', 'gs://poc-app-releases/keystore.jks', 'app/keystore.jks']
 
   # Build the app
   - name: 'gcr.io/cloud-builders/gradle'
     args: ['build']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'KEYSTORE_FILE=keystore.jks'
+      - 'KEYSTORE_FILE=app/keystore.jks'
       - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
       - 'KEY_ALIAS=${_KEY_ALIAS}'
       - 'KEY_PASSWORD=${_KEY_PASSWORD}'
@@ -18,50 +18,42 @@ steps:
     args: ['test']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'KEYSTORE_FILE=keystore.jks'
-      - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
-      - 'KEY_ALIAS=${_KEY_ALIAS}'
-      - 'KEY_PASSWORD=${_KEY_PASSWORD}'
 
-  # Build debug APK
+  # Assemble debug APK
   - name: 'gcr.io/cloud-builders/gradle'
     args: ['assembleDebug']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'KEYSTORE_FILE=keystore.jks'
-      - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
-      - 'KEY_ALIAS=${_KEY_ALIAS}'
-      - 'KEY_PASSWORD=${_KEY_PASSWORD}'
 
-  # Build release APK
+  # Assemble release APK
   - name: 'gcr.io/cloud-builders/gradle'
     args: ['assembleRelease']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'KEYSTORE_FILE=keystore.jks'
+      - 'KEYSTORE_FILE=app/keystore.jks'
       - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
       - 'KEY_ALIAS=${_KEY_ALIAS}'
       - 'KEY_PASSWORD=${_KEY_PASSWORD}'
 
-  # Upload APK to Cloud Storage
+  # Upload release APK to Cloud Storage
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['cp', 'app/build/outputs/apk/release/app-release.apk', 'gs://${_BUCKET_NAME}/app-${_VERSION_NAME}.apk']
+    args: ['cp', 'app/build/outputs/apk/release/app-release.apk', 'gs://poc-app-releases/release/app-release-${BUILD_ID}.apk']
 
   # Clean up keystore
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: 'gcr.io/cloud-builders/gsutil'
     args: ['rm', 'app/keystore.jks']
 
+# Store the APK as a build artifact
 artifacts:
   objects:
-    location: 'gs://${_BUCKET_NAME}/'
-    paths: ['app-${_VERSION_NAME}.apk']
+    location: 'gs://poc-app-releases/release/'
+    paths: ['app-release-${BUILD_ID}.apk']
 
+# Define substitutions
 substitutions:
-  _BUCKET_NAME: poc-app-releases
-  _VERSION_NAME: ${BUILD_ID}
-  _KEYSTORE_PASSWORD: ${_KEYSTORE_PASSWORD}
-  _KEY_ALIAS: ${_KEY_ALIAS}
-  _KEY_PASSWORD: ${_KEY_PASSWORD}
+  _KEYSTORE_PASSWORD: ''  # Will be set in Cloud Build trigger
+  _KEY_ALIAS: ''         # Will be set in Cloud Build trigger
+  _KEY_PASSWORD: ''      # Will be set in Cloud Build trigger
 
 options:
   logging: CLOUD_LOGGING_ONLY 
