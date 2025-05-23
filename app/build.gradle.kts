@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.laennecai.poc"
-    compileSdk = 35
+    compileSdk = 33
 
     defaultConfig {
         applicationId = "com.laennecai.poc"
         minSdk = 31
-        targetSdk = 35
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0"
 
