@@ -51,9 +51,9 @@ artifacts:
 
 # Define substitutions
 substitutions:
-  _KEYSTORE_PASSWORD: ''  # Will be set in Cloud Build trigger
-  _KEY_ALIAS: ''         # Will be set in Cloud Build trigger
-  _KEY_PASSWORD: ''      # Will be set in Cloud Build trigger
+  _KEYSTORE_PASSWORD: '123456'  # Will be set in Cloud Build trigger
+  _KEY_ALIAS: 'laennecai-keystore'         # Will be set in Cloud Build trigger
+  _KEY_PASSWORD: '123456'      # Will be set in Cloud Build trigger
 
 options:
   logging: CLOUD_LOGGING_ONLY 
