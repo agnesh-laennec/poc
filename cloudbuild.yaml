@@ -3,6 +3,12 @@ steps:
   - name: 'gcr.io/cloud-builders/gsutil'
     args: ['cp', 'gs://poc-app-releases/keystore.jks', 'app/keystore.jks']
 
+  # Update Gradle wrapper to latest version
+  - name: 'gcr.io/cloud-builders/gradle'
+    args: ['wrapper', '--gradle-version', '8.11.1']
+    env:
+      - 'GRADLE_USER_HOME=/workspace/.gradle'
+
   # Build the app
   - name: 'gcr.io/cloud-builders/gradle'
     args: ['build']
