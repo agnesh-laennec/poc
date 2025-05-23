@@ -1,83 +1,32 @@
 steps:
-  # Download keystore from Cloud Storage
-  - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['cp', 'gs://poc-app-releases/keystore.jks', 'app/keystore.jks']
+# Step 1: Set up Java Development Kit (JDK) - essential for Android builds
+- name: 'gcr.io/cloud-builders/java'
+  args: ['java', '-version'] # Just to verify Java is present
 
-  # Debug: List workspace contents
-  - name: 'ubuntu'
-    args: ['bash', '-c', 'ls -la && pwd']
+# Step 2: Define ANDROID_HOME. The Android SDK is usually in /opt/android-sdk/ on Cloud Build
+# You might need to verify the exact path or use a custom builder if it's different.
+# For standard Android builds, /root/android-sdk is common for 'gradlew' command
+- name: 'ubuntu' # Or any builder that allows environment variables to be set
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      echo "Setting ANDROID_HOME and PATH for SDK tools..."
+      export ANDROID_HOME=/root/android-sdk # Common path in many Cloud Build Android images
+      export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator
 
-  # Debug: Check Gradle wrapper
-  - name: 'ubuntu'
-    args: ['bash', '-c', 'ls -la gradlew* && cat gradle/wrapper/gradle-wrapper.properties']
+      # You can also write it to local.properties if you prefer, but ANDROID_HOME is often enough
+      # echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
-  # Build the app using Android container
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew build --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
-      - 'KEYSTORE_FILE=app/keystore.jks'
-      - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
-      - 'KEY_ALIAS=${_KEY_ALIAS}'
-      - 'KEY_PASSWORD=${_KEY_PASSWORD}'
+      # Pass these environment variables to the next steps.
+      # Cloud Build automatically propagates environment variables set in previous steps
+      # if they are exported in a script or defined at the step level.
+      # For direct passing, define the env property for the gradle step.
 
-  # Run unit tests
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew test --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
-
-  # Assemble debug APK
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew assembleDebug --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
-
-  # Assemble release APK
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew assembleRelease --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
-      - 'KEYSTORE_FILE=app/keystore.jks'
-      - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
-      - 'KEY_ALIAS=${_KEY_ALIAS}'
-      - 'KEY_PASSWORD=${_KEY_PASSWORD}'
-
-  # Upload release APK to Cloud Storage
-  - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['cp', 'app/build/outputs/apk/release/app-release.apk', 'gs://poc-app-releases/release/app-release-${BUILD_ID}.apk']
-
-  # Clean up keystore
-  - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['rm', 'app/keystore.jks']
-
-# Store the APK as a build artifact
-artifacts:
-  objects:
-    location: 'gs://poc-app-releases/release/'
-    paths: ['app-release-${BUILD_ID}.apk']
-
-# Define substitutions
-substitutions:
-  _KEYSTORE_PASSWORD: '123456'  # Will be set in Cloud Build trigger
-  _KEY_ALIAS: 'laennecai-keystore'         # Will be set in Cloud Build trigger
-  _KEY_PASSWORD: '123456'      # Will be set in Cloud Build trigger
-
-options:
-  logging: CLOUD_LOGGING_ONLY 
+# Step 3: Run your Android build using Gradle Wrapper
+# Use the 'gradle' builder, which is suitable for Android projects.
+- name: 'gcr.io/cloud-builders/gradle'
+  args: ['clean', ':app:assembleDebug'] # Example: clean and build debug APK
+  env: # Explicitly pass ANDROID_HOME to the gradle step for robustness
+    - 'ANDROID_HOME=/root/android-sdk' # Ensure this matches the path where SDK is installed
+  # dir: 'app' # If your build.gradle is in the 'app' directory, specify it here
