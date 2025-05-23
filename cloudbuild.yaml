@@ -14,7 +14,7 @@ steps:
   # Build the app using Android container
   - name: 'docker.io/cirrusci/android-sdk:33'
     entrypoint: 'bash'
-    args: ['-c', 'set -ex; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew build --stacktrace --info --no-daemon']
+    args: ['-c', 'set -ex; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew build --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
       - 'ANDROID_HOME=/opt/android-sdk'
@@ -28,7 +28,7 @@ steps:
   # Run unit tests
   - name: 'docker.io/cirrusci/android-sdk:33'
     entrypoint: 'bash'
-    args: ['-c', 'set -ex; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && ./gradlew test --stacktrace --info --no-daemon']
+    args: ['-c', 'set -ex; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew test --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
       - 'ANDROID_HOME=/opt/android-sdk'
@@ -38,7 +38,7 @@ steps:
   # Assemble debug APK
   - name: 'docker.io/cirrusci/android-sdk:33'
     entrypoint: 'bash'
-    args: ['-c', 'set -ex; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && ./gradlew assembleDebug --stacktrace --info --no-daemon']
+    args: ['-c', 'set -ex; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew assembleDebug --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
       - 'ANDROID_HOME=/opt/android-sdk'
@@ -48,7 +48,7 @@ steps:
   # Assemble release APK
   - name: 'docker.io/cirrusci/android-sdk:33'
     entrypoint: 'bash'
-    args: ['-c', 'set -ex; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && ./gradlew assembleRelease --stacktrace --info --no-daemon']
+    args: ['-c', 'set -ex; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew assembleRelease --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
       - 'ANDROID_HOME=/opt/android-sdk'
