@@ -3,39 +3,57 @@ steps:
   - name: 'gcr.io/cloud-builders/gsutil'
     args: ['cp', 'gs://poc-app-releases/keystore.jks', 'app/keystore.jks']
 
-  # Update Gradle wrapper to latest version
-  - name: 'gcr.io/cloud-builders/gradle'
-    args: ['wrapper', '--gradle-version', '8.11.1']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
+  # Debug: List workspace contents
+  - name: 'ubuntu'
+    args: ['bash', '-c', 'ls -la && pwd']
 
-  # Build the app
-  - name: 'gcr.io/cloud-builders/gradle'
-    args: ['build']
+  # Debug: Check Gradle wrapper
+  - name: 'ubuntu'
+    args: ['bash', '-c', 'ls -la gradlew* && cat gradle/wrapper/gradle-wrapper.properties']
+
+  # Build the app using Android container
+  - name: 'docker.io/cirrusci/android-sdk:33'
+    entrypoint: 'bash'
+    args: ['-c', 'set -ex; chmod +x ./gradlew && ./gradlew build --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
+      - 'ANDROID_HOME=/opt/android-sdk'
+      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
+      - 'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
       - 'KEYSTORE_FILE=app/keystore.jks'
       - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
       - 'KEY_ALIAS=${_KEY_ALIAS}'
       - 'KEY_PASSWORD=${_KEY_PASSWORD}'
 
   # Run unit tests
-  - name: 'gcr.io/cloud-builders/gradle'
-    args: ['test']
+  - name: 'docker.io/cirrusci/android-sdk:33'
+    entrypoint: 'bash'
+    args: ['-c', 'set -ex; ./gradlew test --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
+      - 'ANDROID_HOME=/opt/android-sdk'
+      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
+      - 'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
 
   # Assemble debug APK
-  - name: 'gcr.io/cloud-builders/gradle'
-    args: ['assembleDebug']
+  - name: 'docker.io/cirrusci/android-sdk:33'
+    entrypoint: 'bash'
+    args: ['-c', 'set -ex; ./gradlew assembleDebug --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
+      - 'ANDROID_HOME=/opt/android-sdk'
+      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
+      - 'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
 
   # Assemble release APK
-  - name: 'gcr.io/cloud-builders/gradle'
-    args: ['assembleRelease']
+  - name: 'docker.io/cirrusci/android-sdk:33'
+    entrypoint: 'bash'
+    args: ['-c', 'set -ex; ./gradlew assembleRelease --stacktrace --info --no-daemon']
     env:
       - 'GRADLE_USER_HOME=/workspace/.gradle'
+      - 'ANDROID_HOME=/opt/android-sdk'
+      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
+      - 'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
       - 'KEYSTORE_FILE=app/keystore.jks'
       - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
       - 'KEY_ALIAS=${_KEY_ALIAS}'
