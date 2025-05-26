@@ -7,12 +7,12 @@ plugins {
 }
 
 android {
-    namespace = "com.lab.poc"
+    namespace = "com.laennecai.poc"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.lab.poc"
-        minSdk = 24
+        applicationId = "com.laennecai.poc"
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
