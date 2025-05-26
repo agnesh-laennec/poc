@@ -1,58 +1,101 @@
-name: Android CI
+# cloudbuild.yaml for Android CI/CD
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+# Define substitutions that can be overridden at build time or in trigger settings.
+# _BUCKET_NAME should be set to your GCS bucket used for caching and artifacts.
+substitutions:
+  _BUCKET_NAME: 'your-project-gcs-bucket' # IMPORTANT: Replace with your actual GCS bucket name
 
-jobs:
-  build:
+steps:
+  # 1. Restore Gradle cache from GCS
+  # The Gradle home directory inside the openjdk:17-jdk container is /root/.gradle
+  # This step attempts to download the cache; if it doesn't exist, it continues.
+- name: 'gcr.io/cloud-builders/gsutil'
+  id: 'restore-gradle-cache'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      echo "Attempting to restore Gradle cache from gs://${_BUCKET_NAME}/android-cache/gradle"
+      gsutil -m rsync -r gs://${_BUCKET_NAME}/android-cache/gradle /root/.gradle || echo "Gradle cache not found or rsync failed, proceeding without cache."
+  waitFor: ['-'] # Start immediately, does not depend on other steps
 
-    runs-on: ubuntu-latest
+  # 2. Grant execute permission for gradlew
+  # This uses the openjdk:17-jdk image as it's needed for Gradle steps and includes bash.
+- name: 'openjdk:17-jdk' # Using a Docker Hub image with JDK 17
+  id: 'set-gradlew-executable'
+  entrypoint: 'bash'
+  args: ['-c', 'chmod +x gradlew && ls -l gradlew && ./gradlew --version'] # Verify executable and check versions
+  waitFor:
+    - 'restore-gradle-cache' # Should run after cache restoration attempt
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+  # 3. Download dependencies
+  # All subsequent Gradle steps use ./gradlew with OpenJDK 17.
+- name: 'openjdk:17-jdk'
+  id: 'download-dependencies'
+  entrypoint: './gradlew'
+  args: ['dependencies', '--stacktrace'] # Add --stacktrace for more detailed error logs
+  waitFor:
+    - 'set-gradlew-executable'
 
-    - name: Set up JDK
-      uses: actions/setup-java@v3
-      with:
-        distribution: 'temurin'
-        java-version: 17
+  # 4. Run lint
+- name: 'openjdk:17-jdk'
+  id: 'run-lint'
+  entrypoint: './gradlew'
+  args: ['lint', '--stacktrace']
+  waitFor:
+    - 'download-dependencies'
 
-    - name: Cache Gradle dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/.gradle', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+  # 5. Run unit tests ("run test")
+- name: 'openjdk:17-jdk'
+  id: 'run-unit-tests'
+  entrypoint: './gradlew'
+  args: ['testDebugUnitTest', '--stacktrace']
+  waitFor:
+    - 'run-lint' # Lint should pass before tests, or run in parallel if desired.
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+  # 6. Build APK (Debug) - Retained from original config, useful for testing/dev
+- name: 'openjdk:17-jdk'
+  id: 'build-apk-debug'
+  entrypoint: './gradlew'
+  args: ['assembleDebug', '--stacktrace']
+  waitFor:
+    - 'run-unit-tests' # Tests should pass before building APKs
 
-    - name: Download dependencies
-      run: ./gradlew dependencies
+  # 7. Build APK (Release) ("release the app")
+- name: 'openjdk:17-jdk'
+  id: 'build-apk-release'
+  entrypoint: './gradlew'
+  args: ['assembleRelease', '--stacktrace']
+  waitFor:
+    - 'build-apk-debug' # Or 'run-unit-tests' if debug build is not a strict prerequisite
 
-    - name: Run lint
-      run: ./gradlew lint
+  # 8. Save Gradle cache to GCS
+  # This step runs after successful builds to save the populated .gradle directory.
+- name: 'gcr.io/cloud-builders/gsutil'
+  id: 'save-gradle-cache'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      echo "Saving Gradle cache to gs://${_BUCKET_NAME}/android-cache/gradle"
+      gsutil -m rsync -r /root/.gradle gs://${_BUCKET_NAME}/android-cache/gradle
+  waitFor:
+    - 'build-apk-release' # Ensure this runs after all Gradle tasks that populate the cache
 
-    - name: Run unit tests
-      run: ./gradlew testDebugUnitTest
+# Artifacts to store in GCS after a successful build
+artifacts:
+  objects:
+    # Artifacts will be stored in gs://{_BUCKET_NAME}/android-artifacts/
+    location: 'gs://${_BUCKET_NAME}/android-artifacts/'
+    paths:
+      - 'app/build/outputs/apk/debug/app-debug.apk'
+      - 'app/build/outputs/apk/release/app-release.apk'
+  # Optionally specify images to push to GCR if you were building Docker images
+  # images: ['gcr.io/$PROJECT_ID/my-image']
 
-    - name: Build APK (Debug)
-      run: ./gradlew assembleDebug
+# Optional: Specify machine type for the build steps for better performance
+# options:
+#   machineType: 'E2_HIGHCPU_8' # Example, check available machine types
 
-    - name: Build APK (Release)
-      run: ./gradlew assembleRelease
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: APKs
-        path: |
-          app/build/outputs/apk/debug/app-debug.apk
-          app/build/outputs/apk/release/app-release.apk
+# Optional: Timeout for the build
+# timeout: "1200s" # 20 minutes
