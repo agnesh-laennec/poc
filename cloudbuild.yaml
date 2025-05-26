@@ -3,84 +3,122 @@
 # Define substitutions that can be overridden at build time or in trigger settings.
 # _BUCKET_NAME should be set to your GCS bucket used for caching and artifacts.
 substitutions:
-  _BUCKET_NAME: 'your-project-gcs-bucket' # IMPORTANT: Replace with your actual GCS bucket name
+  _BUCKET_NAME: 'poc-app-releases'
 
 steps:
   # 1. Restore Gradle cache from GCS
   # The Gradle home directory inside the openjdk:17-jdk container is /root/.gradle
   # This step attempts to download the cache; if it doesn't exist, it continues.
-- name: 'gcr.io/cloud-builders/gsutil'
-  id: 'restore-gradle-cache'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      echo "Attempting to restore Gradle cache from gs://${_BUCKET_NAME}/android-cache/gradle"
-      gsutil -m rsync -r gs://${_BUCKET_NAME}/android-cache/gradle /root/.gradle || echo "Gradle cache not found or rsync failed, proceeding without cache."
-  waitFor: ['-'] # Start immediately, does not depend on other steps
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'restore-gradle-cache'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Attempting to restore Gradle cache from gs://${_BUCKET_NAME}/android-cache/gradle_home to /workspace/.gradle_home"
+        mkdir -p /workspace/.gradle_home
+        gsutil -m rsync -r gs://${_BUCKET_NAME}/android-cache/gradle_home /workspace/.gradle_home || echo "Gradle cache not found for /workspace/.gradle_home, proceeding without cache."
+    waitFor: ['-'] # Start immediately, does not depend on other steps
 
-  # 2. Grant execute permission for gradlew
-  # This uses the openjdk:17-jdk image as it's needed for Gradle steps and includes bash.
-- name: 'openjdk:17-jdk' # Using a Docker Hub image with JDK 17
-  id: 'set-gradlew-executable'
-  entrypoint: 'bash'
-  args: ['-c', 'chmod +x gradlew && ls -l gradlew && ./gradlew --version'] # Verify executable and check versions
-  waitFor:
-    - 'restore-gradle-cache' # Should run after cache restoration attempt
+  # 2. Grant execute permission for gradlew, check versions, and create/permit .gradle_home
+  # Using openjdk:17-jdk for this initial step as it's lightweight.
+  # The mobiledevops image also contains a JDK.
+  - name: 'openjdk:17-jdk'
+    id: 'set-gradlew-executable-and-prepare-gradle-dirs'
+    entrypoint: 'bash'
+    args: 
+      - '-c'
+      - |
+        chmod +x gradlew && \
+        ls -l gradlew && \
+        ./gradlew --version && \
+        echo "Creating and setting permissions for /workspace/.gradle_home, /workspace/.gradle and /workspace/build" && \
+        mkdir -p /workspace/.gradle_home && chmod -R 777 /workspace/.gradle_home && ls -ld /workspace/.gradle_home && \
+        mkdir -p /workspace/.gradle && chmod -R 777 /workspace/.gradle && ls -ld /workspace/.gradle && \
+        mkdir -p /workspace/build && chmod -R 777 /workspace/build && ls -ld /workspace/build && \
+        mkdir -p /workspace/app/build && chmod -R 777 /workspace/app/build && ls -ld /workspace/app/build # Also ensure app/build is pre-created and 777
+    waitFor:
+      - 'restore-gradle-cache'
+
+  # This step forcefully cleans build directories before Gradle tasks.
+  - name: 'openjdk:17-jdk' 
+    id: 'force-clean-build-dirs'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Force cleaning build directories..."
+        rm -rf /workspace/build/*
+        rm -rf /workspace/app/build/*
+        echo "Re-creating /workspace/build and /workspace/app/build to ensure they exist for subsequent steps"
+        mkdir -p /workspace/build && chmod -R 777 /workspace/build
+        mkdir -p /workspace/app/build && chmod -R 777 /workspace/app/build
+        echo "Done force cleaning and re-creating build directories."
+    waitFor:
+      - 'set-gradlew-executable-and-prepare-gradle-dirs'
 
   # 3. Download dependencies
-  # All subsequent Gradle steps use ./gradlew with OpenJDK 17.
-- name: 'openjdk:17-jdk'
-  id: 'download-dependencies'
-  entrypoint: './gradlew'
-  args: ['dependencies', '--stacktrace'] # Add --stacktrace for more detailed error logs
-  waitFor:
-    - 'set-gradlew-executable'
+  # Using openjdk:17-jdk. The Android SDK builder could also be used here.
+  - name: 'mobiledevops/android-sdk-image:34.0.0'
+    id: 'download-dependencies'
+    entrypoint: './gradlew'
+    args: ['--gradle-user-home', '/workspace/.gradle_home', 'dependencies', '--stacktrace']
+    waitFor:
+      - 'force-clean-build-dirs'
 
   # 4. Run lint
-- name: 'openjdk:17-jdk'
-  id: 'run-lint'
-  entrypoint: './gradlew'
-  args: ['lint', '--stacktrace']
-  waitFor:
-    - 'download-dependencies'
+  # Switching to an Android SDK builder image
+  - name: 'mobiledevops/android-sdk-image:34.0.0'
+    id: 'run-lint'
+    entrypoint: './gradlew'
+    args: ['--gradle-user-home', '/workspace/.gradle_home', 'lint', '--stacktrace']
+    waitFor:
+      - 'download-dependencies'
 
   # 5. Run unit tests ("run test")
-- name: 'openjdk:17-jdk'
-  id: 'run-unit-tests'
-  entrypoint: './gradlew'
-  args: ['testDebugUnitTest', '--stacktrace']
-  waitFor:
-    - 'run-lint' # Lint should pass before tests, or run in parallel if desired.
+  # Switching to an Android SDK builder image
+  - name: 'mobiledevops/android-sdk-image:34.0.0'
+    id: 'run-unit-tests'
+    entrypoint: './gradlew'
+    args: ['--gradle-user-home', '/workspace/.gradle_home', 'testDebugUnitTest', '--stacktrace']
+    waitFor:
+      - 'run-lint'
 
-  # 6. Build APK (Debug) - Retained from original config, useful for testing/dev
-- name: 'openjdk:17-jdk'
-  id: 'build-apk-debug'
-  entrypoint: './gradlew'
-  args: ['assembleDebug', '--stacktrace']
-  waitFor:
-    - 'run-unit-tests' # Tests should pass before building APKs
+  # 6. Build APK (Debug)
+  # Switching to an Android SDK builder image
+  - name: 'mobiledevops/android-sdk-image:34.0.0'
+    id: 'build-apk-debug'
+    entrypoint: './gradlew'
+    args: ['--gradle-user-home', '/workspace/.gradle_home', 'assembleDebug', '--stacktrace']
+    waitFor:
+      - 'run-unit-tests'
 
   # 7. Build APK (Release) ("release the app")
-- name: 'openjdk:17-jdk'
-  id: 'build-apk-release'
-  entrypoint: './gradlew'
-  args: ['assembleRelease', '--stacktrace']
-  waitFor:
-    - 'build-apk-debug' # Or 'run-unit-tests' if debug build is not a strict prerequisite
+  # Switching to an Android SDK builder image
+  - name: 'mobiledevops/android-sdk-image:34.0.0'
+    id: 'build-apk-release'
+    entrypoint: './gradlew'
+    args: ['--gradle-user-home', '/workspace/.gradle_home', 'assembleRelease', '--stacktrace']
+    waitFor:
+      - 'build-apk-debug'
 
   # 8. Save Gradle cache to GCS
-  # This step runs after successful builds to save the populated .gradle directory.
-- name: 'gcr.io/cloud-builders/gsutil'
-  id: 'save-gradle-cache'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      echo "Saving Gradle cache to gs://${_BUCKET_NAME}/android-cache/gradle"
-      gsutil -m rsync -r /root/.gradle gs://${_BUCKET_NAME}/android-cache/gradle
-  waitFor:
-    - 'build-apk-release' # Ensure this runs after all Gradle tasks that populate the cache
+  # The path to .gradle might differ if the Android builder uses a different user/home.
+  # Assuming /root/.gradle for now, adjust if build logs show a different path.
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'save-gradle-cache'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Saving Gradle cache from /workspace/.gradle_home to gs://${_BUCKET_NAME}/android-cache/gradle_home"
+        if [ -d /workspace/.gradle_home ]; then
+          gsutil -m rsync -r /workspace/.gradle_home gs://${_BUCKET_NAME}/android-cache/gradle_home || echo "Failed to save /workspace/.gradle_home"
+        else
+          echo "Gradle cache directory /workspace/.gradle_home not found to save."
+        fi
+    waitFor:
+      - 'build-apk-release'
 
 # Artifacts to store in GCS after a successful build
 artifacts:

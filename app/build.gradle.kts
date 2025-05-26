@@ -7,13 +7,13 @@ plugins {
 }
 
 android {
-    namespace = "com.laennecai.poc"
-    compileSdk = 33
+    namespace = "com.lab.poc"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.laennecai.poc"
-        minSdk = 31
-        targetSdk = 33
+        applicationId = "com.lab.poc"
+        minSdk = 24
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
@@ -40,14 +40,17 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "1.8"
     }
     buildFeatures {
         compose = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.1"
     }
 }
 
