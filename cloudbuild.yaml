@@ -1,83 +1,58 @@
-steps:
-  # Download keystore from Cloud Storage
-  - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['cp', 'gs://poc-app-releases/keystore.jks', 'app/keystore.jks']
+name: Android CI
 
-  # Debug: List workspace contents
-  - name: 'ubuntu'
-    args: ['bash', '-c', 'ls -la && pwd']
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-  # Debug: Check Gradle wrapper
-  - name: 'ubuntu'
-    args: ['bash', '-c', 'ls -la gradlew* && cat gradle/wrapper/gradle-wrapper.properties']
+jobs:
+  build:
 
-  # Build the app using Android container
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew build --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
-      - 'KEYSTORE_FILE=app/keystore.jks'
-      - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
-      - 'KEY_ALIAS=${_KEY_ALIAS}'
-      - 'KEY_PASSWORD=${_KEY_PASSWORD}'
+    runs-on: ubuntu-latest
 
-  # Run unit tests
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew test --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-  # Assemble debug APK
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew assembleDebug --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: 17
 
-  # Assemble release APK
-  - name: 'docker.io/cirrusci/android-sdk:33'
-    entrypoint: 'bash'
-    args: ['-c', 'set -ex; echo "sdk.dir=/opt/android-sdk" > /workspace/local.properties; rm -rf /workspace/.gradle/*; apt-get update -y && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && chmod +x ./gradlew && ./gradlew clean && ./gradlew assembleRelease --stacktrace --info --no-daemon --scan']
-    env:
-      - 'GRADLE_USER_HOME=/workspace/.gradle'
-      - 'ANDROID_HOME=/opt/android-sdk'
-      - 'ANDROID_SDK_ROOT=/opt/android-sdk'
-      - 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
-      - 'KEYSTORE_FILE=app/keystore.jks'
-      - 'KEYSTORE_PASSWORD=${_KEYSTORE_PASSWORD}'
-      - 'KEY_ALIAS=${_KEY_ALIAS}'
-      - 'KEY_PASSWORD=${_KEY_PASSWORD}'
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/.gradle', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
 
-  # Upload release APK to Cloud Storage
-  - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['cp', 'app/build/outputs/apk/release/app-release.apk', 'gs://poc-app-releases/release/app-release-${BUILD_ID}.apk']
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
 
-  # Clean up keystore
-  - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['rm', 'app/keystore.jks']
+    - name: Download dependencies
+      run: ./gradlew dependencies
 
-# Store the APK as a build artifact
-artifacts:
-  objects:
-    location: 'gs://poc-app-releases/release/'
-    paths: ['app-release-${BUILD_ID}.apk']
+    - name: Run lint
+      run: ./gradlew lint
 
-# Define substitutions
-substitutions:
-  _KEYSTORE_PASSWORD: '123456'  # Will be set in Cloud Build trigger
-  _KEY_ALIAS: 'laennecai-keystore'         # Will be set in Cloud Build trigger
-  _KEY_PASSWORD: '123456'      # Will be set in Cloud Build trigger
+    - name: Run unit tests
+      run: ./gradlew testDebugUnitTest
 
-options:
-  logging: CLOUD_LOGGING_ONLY 
+    - name: Build APK (Debug)
+      run: ./gradlew assembleDebug
+
+    - name: Build APK (Release)
+      run: ./gradlew assembleRelease
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: APKs
+        path: |
+          app/build/outputs/apk/debug/app-debug.apk
+          app/build/outputs/apk/release/app-release.apk
