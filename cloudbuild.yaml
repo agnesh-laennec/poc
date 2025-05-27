@@ -4,6 +4,11 @@
 # _BUCKET_NAME should be set to your GCS bucket used for caching and artifacts.
 substitutions:
   _BUCKET_NAME: 'poc-app-releases'
+  _GCS_KEYSTORE_PATH: 'secrets/keystore.jks' # Path to the keystore in your GCS bucket
+  _KEYSTORE_FILE: '/workspace/app/keystore.jks' # Absolute path to the keystore file in the build environment
+  _KEY_ALIAS: 'poc-key'           # Default alias for your release key
+  _KEYSTORE_PASSWORD: '123456' # IMPORTANT: Replace with your actual keystore password or set via trigger
+  _KEY_PASSWORD: '123456'           # IMPORTANT: Replace with your actual key password or set via trigger
 
 steps:
   # 1. Restore Gradle cache from GCS
@@ -19,6 +24,19 @@ steps:
         mkdir -p /workspace/.gradle_home
         gsutil -m rsync -r gs://${_BUCKET_NAME}/android-cache/gradle_home /workspace/.gradle_home || echo "Gradle cache not found for /workspace/.gradle_home, proceeding without cache."
     waitFor: ['-'] # Start immediately, does not depend on other steps
+
+  # New step: Download keystore from GCS
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'download-keystore-from-gcs'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Attempting to download keystore from gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH} to /workspace/app/keystore.jks"
+        mkdir -p /workspace/app
+        gsutil cp gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH} /workspace/app/keystore.jks || \
+          echo "WARNING: Keystore not found at gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH}. If it's not in the repo, signing will fail."
+    waitFor: ['restore-gradle-cache']
 
   # 2. Grant execute permission for gradlew, check versions, and create/permit .gradle_home
   # Using openjdk:17-jdk for this initial step as it's lightweight.
@@ -172,7 +190,15 @@ steps:
   - name: 'mobiledevops/android-sdk-image:34.0.0'
     id: 'build-apk-release'
     entrypoint: './gradlew'
-    args: ['--gradle-user-home', '/workspace/.gradle_home', 'assembleRelease', '--stacktrace']
+    args: [
+        '--gradle-user-home', '/workspace/.gradle_home',
+        'assembleRelease',
+        '-Pandroid.injected.signing.store.file=${_KEYSTORE_FILE}',
+        '-Pandroid.injected.signing.store.password=${_KEYSTORE_PASSWORD}',
+        '-Pandroid.injected.signing.key.alias=${_KEY_ALIAS}',
+        '-Pandroid.injected.signing.key.password=${_KEY_PASSWORD}',
+        '--stacktrace'
+      ]
     waitFor:
       - 'build-apk-debug'
 
