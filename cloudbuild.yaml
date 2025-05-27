@@ -26,17 +26,27 @@ steps:
   - name: 'openjdk:17-jdk'
     id: 'set-gradlew-executable-and-prepare-gradle-dirs'
     entrypoint: 'bash'
-    args: 
+    args:
       - '-c'
       - |
-        chmod +x gradlew && \
-        ls -l gradlew && \
-        ./gradlew --version && \
-        echo "Creating and setting permissions for /workspace/.gradle_home, /workspace/.gradle, /workspace/build, and /workspace/.kotlin" && \
-        mkdir -p /workspace/.gradle_home && chmod -R 777 /workspace/.gradle_home && ls -ld /workspace/.gradle_home && \
-        mkdir -p /workspace/.gradle && chmod -R 777 /workspace/.gradle && ls -ld /workspace/.gradle && \
-        mkdir -p /workspace/build && chmod -R 777 /workspace/build && ls -ld /workspace/build && \
-        mkdir -p /workspace/app/build && chmod -R 777 /workspace/app/build && ls -ld /workspace/app/build && \
+        chmod +x gradlew && \\
+        ls -l gradlew && \\
+        ./gradlew --version && \\
+        echo "Ensuring directories and setting permissions..." && \\
+        mkdir -p /workspace/.gradle_home && chmod -R 777 /workspace/.gradle_home && \\
+        echo "Permissions for /workspace/.gradle_home after chmod by openjdk:" && \\
+        ls -ld /workspace/.gradle_home && \\
+        echo "Contents and permissions of /workspace/.gradle_home after chmod by openjdk:" && \\
+        ls -lA /workspace/.gradle_home && \\
+        echo "Permissions for /workspace/.gradle_home/daemon if it exists after chmod by openjdk:" && \\
+        ls -ld /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found during openjdk step" && \\
+        echo "Contents and permissions of /workspace/.gradle_home/daemon if it exists after chmod by openjdk:" && \\
+        ls -lA /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found during openjdk step" && \\
+        echo "Permissions for /workspace/.gradle_home/daemon/8.11.1 if it exists after chmod by openjdk:" && \\
+        ls -ld /workspace/.gradle_home/daemon/8.11.1 || echo "/workspace/.gradle_home/daemon/8.11.1 not found during openjdk step" && \\
+        mkdir -p /workspace/.gradle && chmod -R 777 /workspace/.gradle && ls -ld /workspace/.gradle && \\
+        mkdir -p /workspace/build && chmod -R 777 /workspace/build && ls -ld /workspace/build && \\
+        mkdir -p /workspace/app/build && chmod -R 777 /workspace/app/build && ls -ld /workspace/app/build && \\
         mkdir -p /workspace/.kotlin && chmod -R 777 /workspace/.kotlin && ls -ld /workspace/.kotlin # Also ensure .kotlin is pre-created and 777
     waitFor:
       - 'restore-gradle-cache'
@@ -62,8 +72,37 @@ steps:
   # Using openjdk:17-jdk. The Android SDK builder could also be used here.
   - name: 'mobiledevops/android-sdk-image:34.0.0'
     id: 'download-dependencies'
-    entrypoint: './gradlew'
-    args: ['--gradle-user-home', '/workspace/.gradle_home', 'dependencies', '--stacktrace']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "--- Inside download-dependencies step (mobiledevops container) ---"
+        echo "Current user and group IDs:"
+        id -u; id -g
+
+        echo "Attempting to clean and recreate Gradle daemon directory for 8.11.1..."
+        rm -rf /workspace/.gradle_home/daemon/8.11.1
+        mkdir -p /workspace/.gradle_home/daemon/8.11.1 && chmod -R 777 /workspace/.gradle_home/daemon/8.11.1
+        echo "Listing contents of /workspace/.gradle_home/daemon/ after cleanup:"
+        ls -lA /workspace/.gradle_home/daemon/
+
+        echo "Permissions for /workspace/.gradle_home as seen by mobiledevops container:"
+        ls -ld /workspace/.gradle_home
+        echo "Contents of /workspace/.gradle_home as seen by mobiledevops container:"
+        ls -lA /workspace/.gradle_home
+        echo "Permissions for /workspace/.gradle_home/daemon as seen by mobiledevops container:"
+        ls -ld /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
+        echo "Contents of /workspace/.gradle_home/daemon as seen by mobiledevops container:"
+        ls -lA /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
+        echo "Permissions for /workspace/.gradle_home/daemon/8.11.1 as seen by mobiledevops container:"
+        ls -ld /workspace/.gradle_home/daemon/8.11.1 || echo "/workspace/.gradle_home/daemon/8.11.1 not found"
+        echo "Permissions for the specific file /workspace/.gradle_home/daemon/8.11.1/registry.bin if it exists:"
+        ls -l /workspace/.gradle_home/daemon/8.11.1/registry.bin || echo "/workspace/.gradle_home/daemon/8.11.1/registry.bin not found"
+        echo "Attempting to download dependencies..."
+        ./gradlew --gradle-user-home /workspace/.gradle_home dependencies --stacktrace
+        # echo "Attempting to stop Gradle daemon after dependencies..." # Removing --stop for now
+        # ./gradlew --gradle-user-home /workspace/.gradle_home --stop || echo "Gradle stop failed or no daemon running, continuing..."
+        echo "--- Finished download-dependencies step ---"
     waitFor:
       - 'force-clean-build-dirs'
 
@@ -71,8 +110,42 @@ steps:
   # Switching to an Android SDK builder image
   - name: 'mobiledevops/android-sdk-image:34.0.0'
     id: 'run-lint'
-    entrypoint: './gradlew'
-    args: ['--gradle-user-home', '/workspace/.gradle_home', 'lint', '--stacktrace']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "--- Inside run-lint step (mobiledevops container) ---"
+        echo "Current user and group IDs:"
+        id -u; id -g
+
+        echo "Attempting to clean and recreate Gradle daemon directory for 8.11.1 before lint..."
+        rm -rf /workspace/.gradle_home/daemon/8.11.1
+        mkdir -p /workspace/.gradle_home/daemon/8.11.1 && chmod -R 777 /workspace/.gradle_home/daemon/8.11.1
+        echo "Listing contents of /workspace/.gradle_home/daemon/ after cleanup:"
+        ls -lA /workspace/.gradle_home/daemon/
+
+        echo "Permissions for /workspace/.gradle_home as seen by mobiledevops container (before lint):"
+        ls -ld /workspace/.gradle_home
+        echo "Contents of /workspace/.gradle_home as seen by mobiledevops container (before lint):"
+        ls -lA /workspace/.gradle_home
+        echo "Permissions for /workspace/.gradle_home/daemon as seen by mobiledevops container (before lint):"
+        ls -ld /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
+        echo "Contents of /workspace/.gradle_home/daemon as seen by mobiledevops container (before lint):"
+        ls -lA /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
+        echo "Permissions for /workspace/.gradle_home/daemon/8.11.1 as seen by mobiledevops container (before lint):"
+        ls -ld /workspace/.gradle_home/daemon/8.11.1 || echo "/workspace/.gradle_home/daemon/8.11.1 not found"
+        echo "Contents of /workspace/.gradle_home/daemon/8.11.1 as seen by mobiledevops container (before lint):"
+        ls -lA /workspace/.gradle_home/daemon/8.11.1 || echo "/workspace/.gradle_home/daemon/8.11.1 not found"
+        echo "Permissions for /workspace/.gradle_home/daemon/8.11.1/registry.bin if it exists (before lint):"
+        ls -l /workspace/.gradle_home/daemon/8.11.1/registry.bin || echo "/workspace/.gradle_home/daemon/8.11.1/registry.bin not found (before rm)"
+        
+        # echo "Attempting to remove Gradle registry.bin and its lock file..." (already handled by daemon dir removal)
+
+        echo "Attempting to run lint..."
+        ./gradlew --gradle-user-home /workspace/.gradle_home lint --stacktrace
+        # echo "Attempting to stop Gradle daemon after lint..." # Removing --stop for now
+        # ./gradlew --gradle-user-home /workspace/.gradle_home --stop || echo "Gradle stop failed or no daemon running, continuing..."
+        echo "--- Finished run-lint step ---"
     waitFor:
       - 'download-dependencies'
 
@@ -103,6 +176,24 @@ steps:
     waitFor:
       - 'build-apk-debug'
 
+  # Debug: List contents of the release APK directory
+  - name: 'gcr.io/cloud-builders/gcloud' # Using a common image with ls
+    id: 'debug-list-release-apk-files'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "--- Debugging: Listing expected APK output directories ---"
+        echo "Listing /workspace/app/build/outputs/apk/release/:"
+        ls -Al /workspace/app/build/outputs/apk/release/ || echo "Directory /workspace/app/build/outputs/apk/release/ not found or ls failed."
+        echo "Listing /workspace/app/build/outputs/apk/:"
+        ls -Al /workspace/app/build/outputs/apk/ || echo "Directory /workspace/app/build/outputs/apk/ not found or ls failed."
+        echo "Listing /workspace/app/build/outputs/:"
+        ls -Al /workspace/app/build/outputs/ || echo "Directory /workspace/app/build/outputs/ not found or ls failed."
+        echo "--- End Debugging ---"
+    waitFor:
+      - 'build-apk-release'
+
   # 8. Save Gradle cache to GCS
   # The path to .gradle might differ if the Android builder uses a different user/home.
   # Assuming /root/.gradle for now, adjust if build logs show a different path.
@@ -119,7 +210,7 @@ steps:
           echo "Gradle cache directory /workspace/.gradle_home not found to save."
         fi
     waitFor:
-      - 'build-apk-release'
+      - 'debug-list-release-apk-files' # Updated to wait for the new debug step
 
 # Artifacts to store in GCS after a successful build
 artifacts:
@@ -133,8 +224,8 @@ artifacts:
   # images: ['gcr.io/$PROJECT_ID/my-image']
 
 # Optional: Specify machine type for the build steps for better performance
-# options:
-#   machineType: 'E2_HIGHCPU_8' # Example, check available machine types
+options:
+  machineType: 'E2_HIGHCPU_8' # Example, check available machine types
 
 # Optional: Timeout for the build
 # timeout: "1200s" # 20 minutes
