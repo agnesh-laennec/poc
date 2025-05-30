@@ -42,7 +42,7 @@
 
 5. **Upload Keystore**
    ```bash
-   gsutil cp your-keystore.jks gs://poc-app-releases/keystore.jks
+   gsutil cp your-upload-keystore.jks gs://poc-app-releases/upload-keystore.jks
    ```
 
 6. **Grant Permissions**

@@ -1,0 +1,78 @@
+default_platform(:android)
+
+platform :android do
+  desc "Upload AAB to Google Play Internal Testing Track"
+  lane :deploy_play_internal do
+    # Retrieve environment variables set in cloudbuild.yaml
+    aab_path = ENV['AAB_PATH_FOR_FASTLANE']
+    track = ENV['PLAY_TRACK_FOR_FASTLANE']
+    json_key_path = ENV['SUPPLY_JSON_KEY_PATH']
+    package_name_from_appfile = "com.geo.bmiapp" # Explicitly define or read from Appfile if preferred
+
+    # Basic validation
+    if aab_path.nil? || aab_path.empty?
+      UI.user_error!("AAB_PATH_FOR_FASTLANE environment variable not set.")
+    end
+    unless File.exist?(aab_path)
+      UI.user_error!("AAB file not found at path: #{aab_path}. This path is evaluated inside the Cloud Build Ruby container.")
+    end
+
+    if track.nil? || track.empty?
+      UI.message("PLAY_TRACK_FOR_FASTLANE not set, defaulting to 'internal'")
+      track = 'internal' # Default if not provided
+    end
+
+    if json_key_path.nil? || json_key_path.empty?
+      UI.user_error!("SUPPLY_JSON_KEY_PATH environment variable not set. This should point to your Play Console service account JSON key.")
+    end
+    unless File.exist?(json_key_path)
+      UI.user_error!("Play Console JSON key not found at path: #{json_key_path}. This path is evaluated inside the Cloud Build Ruby container.")
+    end
+
+    UI.message("Starting AAB upload to Google Play...")
+    UI.message("Package Name: #{package_name_from_appfile}")
+    UI.message("AAB Path (inside container): #{aab_path}")
+    UI.message("Track: #{track}")
+    UI.message("JSON Key Path (inside container): #{json_key_path}")
+
+    begin
+      # First, try to get app details to verify the app exists and check its status
+      app_details = google_play_track_version_codes(
+        package_name: package_name_from_appfile,
+        track: track,
+        json_key: json_key_path
+      )
+      UI.message("App details retrieved successfully: #{app_details}")
+    rescue => e
+      UI.error("Error retrieving app details: #{e.message}")
+      UI.error("This might indicate that the app doesn't exist in Play Console or there are permission issues.")
+      UI.error("Please verify:")
+      UI.error("1. The app exists in Play Console with package name: #{package_name_from_appfile}")
+      UI.error("2. The service account has the correct permissions")
+      UI.error("3. The app is properly set up in Play Console")
+      raise e
+    end
+
+    begin
+      upload_to_play_store(
+        package_name: package_name_from_appfile,
+        track: track,
+        aab: aab_path,
+        json_key: json_key_path,
+        skip_upload_metadata: true,
+        skip_upload_images: true,
+        skip_upload_screenshots: true,
+        release_status: "draft" # Explicitly set release status to draft
+      )
+      UI.success("Successfully initiated AAB upload to track: #{track}")
+    rescue => e
+      UI.error("Error uploading to Play Store: #{e.message}")
+      UI.error("Please check:")
+      UI.error("1. The app is properly set up in Play Console")
+      UI.error("2. The app is in the correct status (should be in draft)")
+      UI.error("3. The service account has the correct permissions")
+      UI.error("4. The package name matches exactly: #{package_name_from_appfile}")
+      raise e
+    end
+  end
+end 

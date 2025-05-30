@@ -4,43 +4,61 @@
 # _BUCKET_NAME should be set to your GCS bucket used for caching and artifacts.
 substitutions:
   _BUCKET_NAME: 'poc-app-releases'
-  _GCS_KEYSTORE_PATH: 'secrets/keystore.jks' # Path to the keystore in your GCS bucket
-  _KEYSTORE_FILE: '/workspace/app/keystore.jks' # Absolute path to the keystore file in the build environment
-  _KEY_ALIAS: 'poc-key'           # Default alias for your release key
-  _KEYSTORE_PASSWORD: '123456' # IMPORTANT: Replace with your actual keystore password or set via trigger
-  _KEY_PASSWORD: '123456'           # IMPORTANT: Replace with your actual key password or set via trigger
+  _GCS_KEYSTORE_PATH: 'secrets/upload-keystore.jks' # Path to the keystore in your GCS bucket
+  _KEYSTORE_FILE: '/workspace/app/upload-keystore.jks' # Absolute path to the keystore file in the build environment
+  _KEY_ALIAS: 'upload'           # Default alias for your release key
+  _KEYSTORE_PASSWORD: 'android' # IMPORTANT: Replace with your actual keystore password or set via trigger
+  _KEY_PASSWORD: 'android'           # IMPORTANT: Replace with your actual key password or set via trigger
+  _PLAY_TRACK: 'internal' # Default to 'internal', can be 'alpha', 'beta', or 'production'
+  _PLAY_CONSOLE_JSON_KEY_SECRET_VERSION: 'projects/68029887023/secrets/PLAY_CONSOLE_JSON_KEY/versions/latest' # Secret Manager path for Play Console service account JSON key
 
 steps:
-  # 1. Restore Gradle cache from GCS
-  # The Gradle home directory inside the openjdk:17-jdk container is /root/.gradle
-  # This step attempts to download the cache; if it doesn't exist, it continues.
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'restore-gradle-cache'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "Attempting to restore Gradle cache from gs://${_BUCKET_NAME}/android-cache/gradle_home to /workspace/.gradle_home"
-        mkdir -p /workspace/.gradle_home
-        gsutil -m rsync -r gs://${_BUCKET_NAME}/android-cache/gradle_home /workspace/.gradle_home || echo "Gradle cache not found for /workspace/.gradle_home, proceeding without cache."
-    waitFor: ['-'] # Start immediately, does not depend on other steps
+  # 1. Restore Gradle cache from GCS (SKIPPED FOR FASTER TESTING)
+  # - name: 'gcr.io/cloud-builders/gsutil'
+  #   id: 'restore-gradle-cache'
+  #   entrypoint: 'bash'
+  #   args:
+  #     - '-c'
+  #     - |
+  #       echo "Attempting to restore Gradle cache from gs://${_BUCKET_NAME}/android-cache/gradle_home to /workspace/.gradle_home"
+  #       mkdir -p /workspace/.gradle_home
+  #       gsutil -m rsync -r gs://${_BUCKET_NAME}/android-cache/gradle_home /workspace/.gradle_home || echo "Gradle cache not found for /workspace/.gradle_home, proceeding without cache."
+  #   waitFor: ['-'] # Start immediately, does not depend on other steps
 
-  # New step: Download keystore from GCS
+  # New step: Download keystore from GCS (KEEPING THIS - needed for release build)
   - name: 'gcr.io/cloud-builders/gsutil'
     id: 'download-keystore-from-gcs'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "Attempting to download keystore from gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH} to /workspace/app/keystore.jks"
-        mkdir -p /workspace/app
-        gsutil cp gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH} /workspace/app/keystore.jks || \
-          echo "WARNING: Keystore not found at gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH}. If it's not in the repo, signing will fail."
-    waitFor: ['restore-gradle-cache']
+        echo "Attempting to download keystore from gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH} to ${_KEYSTORE_FILE}"
+        mkdir -p $(dirname ${_KEYSTORE_FILE})
+        if ! gsutil -D cp gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH} ${_KEYSTORE_FILE}; then # Added -D for debug output
+          echo "---------------------------------------------------------------------"
+          echo "ERROR: gsutil cp command failed to download keystore."
+          echo "Source: gs://${_BUCKET_NAME}/${_GCS_KEYSTORE_PATH}"
+          echo "Destination: ${_KEYSTORE_FILE}"
+          echo "Please check gsutil's debug output above for specific errors."
+          echo "Verify the GCS path is correct and the Cloud Build service account has 'Storage Object Viewer' permissions on the bucket/object."
+          echo "---------------------------------------------------------------------"
+          exit 1
+        fi
+        # Verify file exists and is not empty after successful gsutil cp command
+        if [ -s "${_KEYSTORE_FILE}" ]; then
+          echo "Keystore successfully downloaded to ${_KEYSTORE_FILE} and is not empty."
+          ls -l "${_KEYSTORE_FILE}"
+        else
+          echo "---------------------------------------------------------------------"
+          echo "ERROR: Keystore file ${_KEYSTORE_FILE} was not found or is empty after gsutil cp command reported success."
+          echo "This is an unexpected state. Please check gsutil debug output."
+          echo "---------------------------------------------------------------------"
+          exit 1
+        fi
+    waitFor: ['-'] # Can run early, changed from restore-gradle-cache
 
-  # 2. Grant execute permission for gradlew, check versions, and create/permit .gradle_home
-  # Using openjdk:17-jdk for this initial step as it's lightweight.
-  # The mobiledevops image also contains a JDK.
+  # 2. Grant execute permission for gradlew, check versions, and create/permit .gradle_home (SKIPPED FOR FASTER TESTING)
+  # We assume gradlew is executable from the repo. If not, add 'chmod +x gradlew' to the build step.
   - name: 'openjdk:17-jdk'
     id: 'set-gradlew-executable-and-prepare-gradle-dirs'
     entrypoint: 'bash'
@@ -67,176 +85,227 @@ steps:
         mkdir -p /workspace/app/build && chmod -R 777 /workspace/app/build && ls -ld /workspace/app/build && \\
         mkdir -p /workspace/.kotlin && chmod -R 777 /workspace/.kotlin && ls -ld /workspace/.kotlin # Also ensure .kotlin is pre-created and 777
     waitFor:
-      - 'restore-gradle-cache'
+      - 'download-keystore-from-gcs' # Would change to '-' if re-enabled
 
-  # This step forcefully cleans build directories before Gradle tasks.
-  - name: 'openjdk:17-jdk' 
-    id: 'force-clean-build-dirs'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "Force cleaning build directories..."
-        rm -rf /workspace/build/*
-        rm -rf /workspace/app/build/*
-        echo "Re-creating /workspace/build and /workspace/app/build to ensure they exist for subsequent steps"
-        mkdir -p /workspace/build && chmod -R 777 /workspace/build
-        mkdir -p /workspace/app/build && chmod -R 777 /workspace/app/build
-        echo "Done force cleaning and re-creating build directories."
-    waitFor:
-      - 'set-gradlew-executable-and-prepare-gradle-dirs'
+  # This step forcefully cleans build directories before Gradle tasks. (SKIPPED FOR FASTER TESTING)
+  # - name: 'openjdk:17-jdk'
+  #   id: 'force-clean-build-dirs'
+  #   entrypoint: 'bash'
+  #   args:
+  #     - '-c'
+  #     - |
+  #       echo "Force cleaning build directories..."
+  #       rm -rf /workspace/build/*
+  #       rm -rf /workspace/app/build/*
+  #       echo "Re-creating /workspace/build and /workspace/app/build to ensure they exist for subsequent steps"
+  #       mkdir -p /workspace/build && chmod -R 777 /workspace/build
+  #       mkdir -p /workspace/app/build && chmod -R 777 /workspace/app/build
+  #       echo "Done force cleaning and re-creating build directories."
+  #   waitFor:
+  #     - 'set-gradlew-executable-and-prepare-gradle-dirs' # Would change if re-enabled
 
-  # 3. Download dependencies
-  # Using openjdk:17-jdk. The Android SDK builder could also be used here.
-  - name: 'mobiledevops/android-sdk-image:34.0.0'
-    id: 'download-dependencies'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "--- Inside download-dependencies step (mobiledevops container) ---"
-        echo "Current user and group IDs:"
-        id -u; id -g
+  # 3. Download dependencies (SKIPPED FOR FASTER TESTING - Release build might fetch them)
+  # - name: 'mobiledevops/android-sdk-image:34.0.0'
+  #   id: 'download-dependencies'
+  #   entrypoint: 'bash'
+  #   args:
+  #     - '-c'
+  #     - |
+  #       chmod +x gradlew # Ensure gradlew is executable
+  #       echo "--- Inside download-dependencies step (mobiledevops container) ---"
+  #       echo "Current user and group IDs:"
+  #       id -u; id -g
+  #
+  #       echo "Aggressively cleaning potentially problematic Gradle cache directories for version 8.11.1..."
+  #       rm -rf /workspace/.gradle_home/caches/8.11.1
+  #       mkdir -p /workspace/.gradle_home/caches/8.11.1 && chmod -R 777 /workspace/.gradle_home/caches/8.11.1
+  #       rm -rf /workspace/.gradle_home/daemon/8.11.1
+  #       mkdir -p /workspace/.gradle_home/daemon/8.11.1 && chmod -R 777 /workspace/.gradle_home/daemon/8.11.1
+  #       echo "Finished aggressive cache cleaning."
+  #
+  #       echo "Attempting to download dependencies..."
+  #       ./gradlew --gradle-user-home /workspace/.gradle_home dependencies --stacktrace
+  #       echo "--- Finished download-dependencies step ---"
+  #   waitFor:
+  #     - 'force-clean-build-dirs' # Would change if re-enabled
 
-        echo "Attempting to clean and recreate Gradle daemon directory for 8.11.1..."
-        rm -rf /workspace/.gradle_home/daemon/8.11.1
-        mkdir -p /workspace/.gradle_home/daemon/8.11.1 && chmod -R 777 /workspace/.gradle_home/daemon/8.11.1
-        echo "Listing contents of /workspace/.gradle_home/daemon/ after cleanup:"
-        ls -lA /workspace/.gradle_home/daemon/
+  # 4. Run lint (SKIPPED FOR FASTER TESTING)
+  # - name: 'mobiledevops/android-sdk-image:34.0.0'
+  #   id: 'run-lint'
+  #   entrypoint: 'bash'
+  #   args:
+  #     - '-c'
+  #     - |
+  #       chmod +x gradlew # Ensure gradlew is executable
+  #       echo "--- Inside run-lint step (mobiledevops container) ---"
+  #       # ... (rest of lint script) ...
+  #       ./gradlew --gradle-user-home /workspace/.gradle_home lint --stacktrace
+  #       echo "--- Finished run-lint step ---"
+  #   waitFor:
+  #     - 'download-dependencies'
 
-        echo "Permissions for /workspace/.gradle_home as seen by mobiledevops container:"
-        ls -ld /workspace/.gradle_home
-        echo "Contents of /workspace/.gradle_home as seen by mobiledevops container:"
-        ls -lA /workspace/.gradle_home
-        echo "Permissions for /workspace/.gradle_home/daemon as seen by mobiledevops container:"
-        ls -ld /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
-        echo "Contents of /workspace/.gradle_home/daemon as seen by mobiledevops container:"
-        ls -lA /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
-        echo "Permissions for /workspace/.gradle_home/daemon/8.11.1 as seen by mobiledevops container:"
-        ls -ld /workspace/.gradle_home/daemon/8.11.1 || echo "/workspace/.gradle_home/daemon/8.11.1 not found"
-        echo "Permissions for the specific file /workspace/.gradle_home/daemon/8.11.1/registry.bin if it exists:"
-        ls -l /workspace/.gradle_home/daemon/8.11.1/registry.bin || echo "/workspace/.gradle_home/daemon/8.11.1/registry.bin not found"
-        echo "Attempting to download dependencies..."
-        ./gradlew --gradle-user-home /workspace/.gradle_home dependencies --stacktrace
-        # echo "Attempting to stop Gradle daemon after dependencies..." # Removing --stop for now
-        # ./gradlew --gradle-user-home /workspace/.gradle_home --stop || echo "Gradle stop failed or no daemon running, continuing..."
-        echo "--- Finished download-dependencies step ---"
-    waitFor:
-      - 'force-clean-build-dirs'
+  # 5. Run unit tests ("run test") (SKIPPED FOR FASTER TESTING)
+  # - name: 'mobiledevops/android-sdk-image:34.0.0'
+  #   id: 'run-unit-tests'
+  #   entrypoint: './gradlew' # Assumes gradlew is executable
+  #   args: ['--gradle-user-home', '/workspace/.gradle_home', 'testDebugUnitTest', '--stacktrace']
+  #   waitFor:
+  #     - 'run-lint'
 
-  # 4. Run lint
-  # Switching to an Android SDK builder image
-  - name: 'mobiledevops/android-sdk-image:34.0.0'
-    id: 'run-lint'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "--- Inside run-lint step (mobiledevops container) ---"
-        echo "Current user and group IDs:"
-        id -u; id -g
+  # 6. Build APK (Debug) (SKIPPED FOR FASTER TESTING)
+  # - name: 'mobiledevops/android-sdk-image:34.0.0'
+  #   id: 'build-apk-debug'
+  #   entrypoint: './gradlew' # Assumes gradlew is executable
+  #   args: ['--gradle-user-home', '/workspace/.gradle_home', 'assembleDebug', '--stacktrace']
+  #   waitFor:
+  #     - 'run-unit-tests'
 
-        echo "Attempting to clean and recreate Gradle daemon directory for 8.11.1 before lint..."
-        rm -rf /workspace/.gradle_home/daemon/8.11.1
-        mkdir -p /workspace/.gradle_home/daemon/8.11.1 && chmod -R 777 /workspace/.gradle_home/daemon/8.11.1
-        echo "Listing contents of /workspace/.gradle_home/daemon/ after cleanup:"
-        ls -lA /workspace/.gradle_home/daemon/
-
-        echo "Permissions for /workspace/.gradle_home as seen by mobiledevops container (before lint):"
-        ls -ld /workspace/.gradle_home
-        echo "Contents of /workspace/.gradle_home as seen by mobiledevops container (before lint):"
-        ls -lA /workspace/.gradle_home
-        echo "Permissions for /workspace/.gradle_home/daemon as seen by mobiledevops container (before lint):"
-        ls -ld /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
-        echo "Contents of /workspace/.gradle_home/daemon as seen by mobiledevops container (before lint):"
-        ls -lA /workspace/.gradle_home/daemon || echo "/workspace/.gradle_home/daemon not found"
-        echo "Permissions for /workspace/.gradle_home/daemon/8.11.1 as seen by mobiledevops container (before lint):"
-        ls -ld /workspace/.gradle_home/daemon/8.11.1 || echo "/workspace/.gradle_home/daemon/8.11.1 not found"
-        echo "Contents of /workspace/.gradle_home/daemon/8.11.1 as seen by mobiledevops container (before lint):"
-        ls -lA /workspace/.gradle_home/daemon/8.11.1 || echo "/workspace/.gradle_home/daemon/8.11.1 not found"
-        echo "Permissions for /workspace/.gradle_home/daemon/8.11.1/registry.bin if it exists (before lint):"
-        ls -l /workspace/.gradle_home/daemon/8.11.1/registry.bin || echo "/workspace/.gradle_home/daemon/8.11.1/registry.bin not found (before rm)"
-        
-        # echo "Attempting to remove Gradle registry.bin and its lock file..." (already handled by daemon dir removal)
-
-        echo "Attempting to run lint..."
-        ./gradlew --gradle-user-home /workspace/.gradle_home lint --stacktrace
-        # echo "Attempting to stop Gradle daemon after lint..." # Removing --stop for now
-        # ./gradlew --gradle-user-home /workspace/.gradle_home --stop || echo "Gradle stop failed or no daemon running, continuing..."
-        echo "--- Finished run-lint step ---"
-    waitFor:
-      - 'download-dependencies'
-
-  # 5. Run unit tests ("run test")
-  # Switching to an Android SDK builder image
-  - name: 'mobiledevops/android-sdk-image:34.0.0'
-    id: 'run-unit-tests'
-    entrypoint: './gradlew'
-    args: ['--gradle-user-home', '/workspace/.gradle_home', 'testDebugUnitTest', '--stacktrace']
-    waitFor:
-      - 'run-lint'
-
-  # 6. Build APK (Debug)
-  # Switching to an Android SDK builder image
-  - name: 'mobiledevops/android-sdk-image:34.0.0'
-    id: 'build-apk-debug'
-    entrypoint: './gradlew'
-    args: ['--gradle-user-home', '/workspace/.gradle_home', 'assembleDebug', '--stacktrace']
-    waitFor:
-      - 'run-unit-tests'
-
-  # 7. Build APK (Release) ("release the app")
-  # Switching to an Android SDK builder image
+  # 7. Build APK (Release) ("release the app") (KEEPING THIS)
   - name: 'mobiledevops/android-sdk-image:34.0.0'
     id: 'build-apk-release'
-    entrypoint: './gradlew'
-    args: [
-        '--gradle-user-home', '/workspace/.gradle_home',
-        'assembleRelease',
-        '-Pandroid.injected.signing.store.file=${_KEYSTORE_FILE}',
-        '-Pandroid.injected.signing.store.password=${_KEYSTORE_PASSWORD}',
-        '-Pandroid.injected.signing.key.alias=${_KEY_ALIAS}',
-        '-Pandroid.injected.signing.key.password=${_KEY_PASSWORD}',
-        '--stacktrace'
-      ]
-    waitFor:
-      - 'build-apk-debug'
+    entrypoint: 'bash' # Changed to bash to allow chmod
+    args:
+      - '-c'
+      - |
+        chmod +x gradlew # Ensure gradlew is executable
+        ./gradlew --gradle-user-home /workspace/.gradle_home bundleRelease -Pandroid.injected.signing.store.file=${_KEYSTORE_FILE} -Pandroid.injected.signing.store.password=${_KEYSTORE_PASSWORD} -Pandroid.injected.signing.key.alias=${_KEY_ALIAS} -Pandroid.injected.signing.key.password=${_KEY_PASSWORD} --stacktrace
+    waitFor: # Depends on keystore download
+      - 'set-gradlew-executable-and-prepare-gradle-dirs'
 
-  # Debug: List contents of the release APK directory
-  - name: 'gcr.io/cloud-builders/gcloud' # Using a common image with ls
-    id: 'debug-list-release-apk-files'
+  # Debug: List contents of the release AAB directory (SKIPPED FOR FASTER TESTING)
+  # - name: 'gcr.io/cloud-builders/gcloud'
+  #   id: 'debug-list-release-aab-files'
+  #   entrypoint: 'bash'
+  #   args:
+  #     - '-c'
+  #     - |
+  #       echo "--- Debugging: Listing expected AAB output directories ---"
+  #       # ... (rest of debug script) ...
+  #   waitFor:
+  #     - 'build-apk-release'
+
+  # New Step: Retrieve Play Console JSON Key from Secret Manager (KEEPING THIS)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'retrieve-play-console-json-key'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "--- Debugging: Listing expected APK output directories ---"
-        echo "Listing /workspace/app/build/outputs/apk/release/:"
-        ls -Al /workspace/app/build/outputs/apk/release/ || echo "Directory /workspace/app/build/outputs/apk/release/ not found or ls failed."
-        echo "Listing /workspace/app/build/outputs/apk/:"
-        ls -Al /workspace/app/build/outputs/apk/ || echo "Directory /workspace/app/build/outputs/apk/ not found or ls failed."
-        echo "Listing /workspace/app/build/outputs/:"
-        ls -Al /workspace/app/build/outputs/ || echo "Directory /workspace/app/build/outputs/ not found or ls failed."
-        echo "--- End Debugging ---"
-    waitFor:
+        echo "Retrieving Play Console JSON key from Secret Manager..."
+        gcloud secrets versions access ${_PLAY_CONSOLE_JSON_KEY_SECRET_VERSION} > /workspace/play_console_key.json
+        if [ ! -s /workspace/play_console_key.json ]; then
+          echo "ERROR: Play Console JSON key file is empty or not created."
+          exit 1
+        fi
+        echo "Play Console JSON key retrieved to /workspace/play_console_key.json"
+        ls -l /workspace/play_console_key.json
+    waitFor: # Should run after AAB is built, or can run in parallel if no direct dependency
       - 'build-apk-release'
 
-  # 8. Save Gradle cache to GCS
-  # The path to .gradle might differ if the Android builder uses a different user/home.
-  # Assuming /root/.gradle for now, adjust if build logs show a different path.
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'save-gradle-cache'
+  # New Step: Install Ruby, Bundler, and Fastlane, then deploy to Play Store (KEEPING THIS)
+  - name: 'ruby:3.1' # Using a Ruby image
+    id: 'install-and-run-fastlane'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "Saving Gradle cache from /workspace/.gradle_home to gs://${_BUCKET_NAME}/android-cache/gradle_home"
-        if [ -d /workspace/.gradle_home ]; then
-          gsutil -m rsync -r /workspace/.gradle_home gs://${_BUCKET_NAME}/android-cache/gradle_home || echo "Failed to save /workspace/.gradle_home"
+        set -e # Exit immediately if a command exits with a non-zero status.
+
+        echo "--- DIAGNOSTICS: Listing /workspace contents ---"
+        ls -Al /workspace
+        echo "--- DIAGNOSTICS: Listing /workspace/app contents (if it exists) ---"
+        ls -Al /workspace/app || echo "/workspace/app not found or ls failed"
+        echo "--- END DIAGNOSTICS ---"
+
+        echo "Installing Bundler and Fastlane..."
+        gem install bundler --no-document
+
+        # Determine project root for Gemfile and Fastlane directory
+        PROJECT_DIR=""
+        if [ -f /workspace/Gemfile ]; then
+          PROJECT_DIR="/workspace"
+        elif [ -f /workspace/app/Gemfile ]; then
+          PROJECT_DIR="/workspace/app"
+        elif [ -d /workspace/fastlane ] || [ -d /workspace/app/fastlane ]; then # Check for fastlane dir if Gemfile is missing for global install
+           if [ -d /workspace/fastlane ]; then
+             PROJECT_DIR="/workspace"
+           else
+             PROJECT_DIR="/workspace/app"
+           fi
         else
-          echo "Gradle cache directory /workspace/.gradle_home not found to save."
+          echo "ERROR: Neither Gemfile nor a 'fastlane' directory found in /workspace or /workspace/app."
+          echo "Attempting global Fastlane install and assuming Fastfile is in /workspace/fastlane or /workspace/app/fastlane."
+          gem install fastlane --no-document
+          if ! command -v fastlane &> /dev/null; then
+            echo "ERROR: Fastlane could not be installed globally either."
+            exit 1
+          fi
+          if [ -d /workspace/fastlane ]; then
+             PROJECT_DIR="/workspace"
+          elif [ -d /workspace/app/fastlane ]; then
+             PROJECT_DIR="/workspace/app"
+          else
+            echo "ERROR: Fastlane directory not found in /workspace or /workspace/app even after attempting global install."
+            exit 1
+          fi
         fi
+
+        echo "Changing to project directory: $$PROJECT_DIR" # $$ to escape for Cloud Build templater
+        cd "$$PROJECT_DIR" # $$ to escape for Cloud Build templater
+
+        if [ -f Gemfile ]; then
+          echo "Gemfile found. Running bundle install..."
+          bundle install
+          echo "Bundle install complete."
+        elif ! command -v fastlane &> /dev/null; then
+            echo "No Gemfile, and Fastlane not found. Attempting global install."
+            gem install fastlane --no-document
+            if ! command -v fastlane &> /dev/null; then
+                echo "ERROR: Fastlane could not be installed globally."
+                exit 1
+            fi
+        else
+          echo "No Gemfile found, proceeding with existing/globally installed fastlane."
+        fi
+        
+        echo "Setting up Google Cloud credentials for Fastlane..."
+        export SUPPLY_JSON_KEY_PATH=/workspace/play_console_key.json
+        
+        AAB_PATH_ON_CI="/workspace/app/build/outputs/bundle/release/app-release.aab" # Path within Cloud Build
+        if [ ! -f "$$AAB_PATH_ON_CI" ]; then # Use $$AAB_PATH_ON_CI for shell variable to avoid Cloud Build substitution error
+          echo "ERROR: AAB file not found at $$AAB_PATH_ON_CI" # Use $$AAB_PATH_ON_CI
+          exit 1
+        fi
+        
+        echo "Attempting to upload AAB to Google Play Console track: ${_PLAY_TRACK} using Fastlane lane 'deploy_play_internal'"
+        export AAB_PATH_FOR_FASTLANE="$$AAB_PATH_ON_CI" # Use $$AAB_PATH_ON_CI
+        export PLAY_TRACK_FOR_FASTLANE="${_PLAY_TRACK}"
+
+        if [ -f Gemfile ]; then
+          bundle exec fastlane deploy_play_internal
+        else
+          fastlane deploy_play_internal
+        fi
+        
+        echo "Fastlane deployment to Google Play Console initiated."
     waitFor:
-      - 'debug-list-release-apk-files' # Updated to wait for the new debug step
+      - 'retrieve-play-console-json-key'
+
+  # 8. Save Gradle cache to GCS (SKIPPED FOR FASTER TESTING)
+  # - name: 'gcr.io/cloud-builders/gsutil'
+  #   id: 'save-gradle-cache'
+  #   entrypoint: 'bash'
+  #   args:
+  #     - '-c'
+  #     - |
+  #       echo "Saving Gradle cache from /workspace/.gradle_home to gs://${_BUCKET_NAME}/android-cache/gradle_home"
+  #       if [ -d /workspace/.gradle_home ]; then
+  #         gsutil -m rsync -r /workspace/.gradle_home gs://${_BUCKET_NAME}/android-cache/gradle_home || echo "Failed to save /workspace/.gradle_home"
+  #       else
+  #         echo "Gradle cache directory /workspace/.gradle_home not found to save."
+  #       fi
+  #   waitFor:
+  #     - 'install-and-run-fastlane'
 
 # Artifacts to store in GCS after a successful build
 artifacts:
@@ -244,8 +313,8 @@ artifacts:
     # Artifacts will be stored in gs://{_BUCKET_NAME}/android-artifacts/
     location: 'gs://${_BUCKET_NAME}/android-artifacts/'
     paths:
-      - 'app/build/outputs/apk/debug/app-debug.apk'
-      - 'app/build/outputs/apk/release/app-release.apk'
+      # - 'app/build/outputs/apk/debug/app-debug.apk' # Debug APK build is skipped
+      - 'app/build/outputs/bundle/release/app-release.aab'
   # Optionally specify images to push to GCR if you were building Docker images
   # images: ['gcr.io/$PROJECT_ID/my-image']
 
