@@ -37,7 +37,7 @@ import com.laennecai.poc.ui.theme.PocTheme
 // Main navigation routes for bottom bar
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     data object Posts : Screen("posts_root", "Posts", Icons.Filled.Email)
-    data object BmiCalculator : Screen("bmi_calculator_root", "BMI Calc", Icons.Filled.Face)
+    data object BmiCalculator : Screen("bmi_calculator_root", "BMI", Icons.Filled.Face)
     data object TodoList : Screen("todo_list_root", "Todo", Icons.Filled.List)
 }
 
