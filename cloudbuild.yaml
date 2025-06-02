@@ -4,11 +4,11 @@
 # _BUCKET_NAME should be set to your GCS bucket used for caching and artifacts.
 substitutions:
   _BUCKET_NAME: 'poc-app-releases'
-  _GCS_KEYSTORE_PATH: 'secrets/upload-keystore.jks' # Path to the keystore in your GCS bucket
-  _KEYSTORE_FILE: '/workspace/app/upload-keystore.jks' # Absolute path to the keystore file in the build environment
-  _KEY_ALIAS: 'upload'           # Default alias for your release key
-  _KEYSTORE_PASSWORD: 'android' # IMPORTANT: Replace with your actual keystore password or set via trigger
-  _KEY_PASSWORD: 'android'           # IMPORTANT: Replace with your actual key password or set via trigger
+  _GCS_KEYSTORE_PATH: 'secrets/keystore.jks' # Path to the keystore in your GCS bucket
+  _KEYSTORE_FILE: '/workspace/app/keystore.jks' # Absolute path to the keystore file in the build environment
+  _KEY_ALIAS: 'poc-key'           # Default alias for your release key
+  _KEYSTORE_PASSWORD: '123456' # IMPORTANT: Replace with your actual keystore password or set via trigger
+  _KEY_PASSWORD: '123456'           # IMPORTANT: Replace with your actual key password or set via trigger
   _PLAY_TRACK: 'internal' # Default to 'internal', can be 'alpha', 'beta', or 'production'
   _PLAY_CONSOLE_JSON_KEY_SECRET_VERSION: 'projects/68029887023/secrets/PLAY_CONSOLE_JSON_KEY/versions/latest' # Secret Manager path for Play Console service account JSON key
 

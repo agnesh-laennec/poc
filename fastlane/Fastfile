@@ -7,7 +7,7 @@ platform :android do
     aab_path = ENV['AAB_PATH_FOR_FASTLANE']
     track = ENV['PLAY_TRACK_FOR_FASTLANE']
     json_key_path = ENV['SUPPLY_JSON_KEY_PATH']
-    package_name_from_appfile = "com.geo.bmiapp" # Explicitly define or read from Appfile if preferred
+    package_name_from_appfile = "com.laennecai.bmiapp" # Explicitly define or read from Appfile if preferred
 
     # Basic validation
     if aab_path.nil? || aab_path.empty?
