@@ -7,11 +7,11 @@ import com.laennecai.poc.features.post.domain.repository.ApiService
 
 class PostRepositoryImpl(private val apiService: ApiService) : PostRepository {
     override suspend fun getPosts(): List<Post> {
-        val response = apiService.getPosts()
-        if (response.isSuccessful) {
-            return response.body() ?: emptyList()
+        return try {
+            apiService.getPosts()
+        } catch (e: Exception) {
+            throw Exception("Failed to fetch posts: ${e.message}")
         }
-        throw Exception("Failed to fetch posts: ${response.code()}")
     }
     // override suspend fun getPostById(id: Int): Result<Post> { ... } // For later
 } 

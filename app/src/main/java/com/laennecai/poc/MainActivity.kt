@@ -11,11 +11,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -23,7 +31,10 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
-import androidx.navigation.compose.*
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.laennecai.poc.features.bmi.presentation.BmiCalculatorScreen
 import com.laennecai.poc.features.post.presentation.PostDetailScreen
@@ -37,7 +48,7 @@ import com.laennecai.poc.ui.theme.PocTheme
 // Main navigation routes for bottom bar
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     data object Posts : Screen("posts_root", "Posts", Icons.Filled.Email)
-    data object BmiCalculator : Screen("bmi_calculator_root", "BMI", Icons.Filled.Face)
+    data object BmiCalculator : Screen("bmi_calculator_root", "BMI Cal", Icons.Filled.Face)
     data object TodoList : Screen("todo_list_root", "Todo", Icons.Filled.List)
 }
 
@@ -78,7 +89,7 @@ fun AppNavigation(navController: NavHostController) {
             when (currentRoute) {
                 Screen.Posts.route -> {
                     TopAppBar(
-                        title = { Text("Posts") },
+                        title = { Text("Posts: APP VERSION: 6") },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             titleContentColor = MaterialTheme.colorScheme.primary,
