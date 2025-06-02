@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.geo.bmiapp"
+    namespace = "com.laennecai.poc"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.geo.bmiapp"
+        applicationId = "com.laennecai.poc"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
