@@ -1,8 +1,8 @@
-package com.geo.bmiapp.features.bmi.presentation
+package com.laennecai.poc.features.bmi.presentation
 
-import com.geo.bmiapp.features.bmi.domain.usecase.BmiInput
-import com.geo.bmiapp.features.bmi.domain.usecase.BmiOutput
-import com.geo.bmiapp.features.bmi.domain.usecase.FakeCalculateBmiUseCase
+import com.laennecai.poc.features.bmi.domain.usecase.BmiInput
+import com.laennecai.poc.features.bmi.domain.usecase.BmiOutput
+import com.laennecai.poc.features.bmi.domain.usecase.FakeCalculateBmiUseCase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

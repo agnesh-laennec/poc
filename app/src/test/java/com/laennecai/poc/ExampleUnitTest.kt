@@ -1,4 +1,4 @@
-package com.geo.bmiapp
+package com.laennecai.poc
 
 import org.junit.Test
 

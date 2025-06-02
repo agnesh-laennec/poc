@@ -1,4 +1,4 @@
-package com.geo.bmiapp.features.bmi.domain.usecase
+package com.laennecai.poc.features.bmi.domain.usecase
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
