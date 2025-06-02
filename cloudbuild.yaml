@@ -321,6 +321,7 @@ artifacts:
 # Optional: Specify machine type for the build steps for better performance
 options:
   machineType: 'E2_HIGHCPU_8' # Example, check available machine types
+  logging: CLOUD_LOGGING_ONLY
 
 # Optional: Timeout for the build
 # timeout: "1200s" # 20 minutes
